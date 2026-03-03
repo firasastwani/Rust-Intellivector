@@ -1,12 +1,17 @@
-use crate::similarity::cosine_similarity;
+use crate::ingest::{map_file, split_chunks};
 
+use std::fs::File;
+
+mod ingest;
 mod similarity;
 
 fn main() {
-    let v1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    let v2 = vec![-1.0, -2.0, -3.0, -4.0, -5.0];
+    let file = File::open("./docs/expl.md").unwrap();
+    let mmap = map_file(file);
+    let chunks = split_chunks(&mmap, 512);
 
-    let res = cosine_similarity(&v1, &v2);
-
-    println!("{res}");
+    for (i, chunk) in chunks.iter().enumerate() {
+        let s = std::str::from_utf8(chunk).unwrap();
+        println!("Chunk {i}:\n{s}");
+    }
 }
