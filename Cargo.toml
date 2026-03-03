@@ -1,0 +1,15 @@
+[package]
+name = "mem-system"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+candle-core = "0.8"
+candle-transformers = "0.8"
+candle-nn = "0.8"
+tokenizers = "0.21"        # tokenize text before embedding
+hf-hub = "0.3"             # download model from HuggingFace once
+anyhow = "1"               # simple error handling 
+clap = { version = "4", features = ["derive"] }  # cli argument parsing
+rayon = "1"                # parallel embedding of chunks
+memmap2 = "0.9"           
