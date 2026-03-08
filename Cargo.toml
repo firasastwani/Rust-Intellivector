@@ -8,8 +8,10 @@ candle-core = "0.8"
 candle-transformers = "0.8"
 candle-nn = "0.8"
 tokenizers = "0.21"        # tokenize text before embedding
-hf-hub = "0.3"             # download model from HuggingFace once
+hf-hub = "0.5"             # download model from HuggingFace once
 anyhow = "1"               # simple error handling 
 clap = { version = "4", features = ["derive"] }  # cli argument parsing
 rayon = "1"                # parallel embedding of chunks
 memmap2 = "0.9"           
+serde_json = "1"
+dotenvy = "0.15.7"

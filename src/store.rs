@@ -16,6 +16,10 @@ impl<'a> VectorStore<'a> {
         self.entries.push((chunk, embedding));
     }
 
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     pub fn search(&self, query_embedding: &[f32], top_k: usize) -> Vec<&[u8]> {
         let mut scored: Vec<(f32, &[u8])> = self
             .entries
