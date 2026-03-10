@@ -1,6 +1,12 @@
 use memmap2::Mmap;
 use std::fs::File;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
 // memory-maps the file; caller holds the Mmap so chunk slices can borrow it
 pub fn map_file(file: File) -> Mmap {
     let mmap = unsafe { Mmap::map(&file) }.unwrap();
@@ -8,12 +14,12 @@ pub fn map_file(file: File) -> Mmap {
     mmap
 }
 
-// splits input into chunks of either 512 chars or a new paragraph;
-// if it splits before reaching a new paragraph it will drop a marker to contiue
-pub fn split_chunks<'a>(data: &'a [u8], chunk_size: usize) -> Vec<&'a [u8]> {
+// splits input into chunk spans of either `chunk_size` chars or a new paragraph.
+// spans are byte offsets into the provided data.
+pub fn split_chunk_spans(data: &[u8], chunk_size: usize) -> Vec<ChunkSpan> {
     let chars_to_bytes = chunk_size * 4; // UTF-8 max 4 bytes per char
 
-    let mut paragraphs: Vec<&[u8]> = Vec::new();
+    let mut spans: Vec<ChunkSpan> = Vec::new();
 
     let mut start: usize = 0;
 
@@ -27,10 +33,9 @@ pub fn split_chunks<'a>(data: &'a [u8], chunk_size: usize) -> Vec<&'a [u8]> {
             end += 1;
         }
 
-        paragraphs.push(&data[start..end]);
-
+        spans.push(ChunkSpan { start, end });
         start = end;
     }
 
-    paragraphs
+    spans
 }

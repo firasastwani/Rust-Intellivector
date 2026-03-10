@@ -19,8 +19,15 @@ impl Embedder {
         // safety: single-threaded at this point; no other thread is reading env vars
         unsafe {
             for var in [
-                "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
-                "ALL_PROXY", "all_proxy", "HF_ENDPOINT", "HF_HOME", "HF_HUB_URL",
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "ALL_PROXY",
+                "all_proxy",
+                "HF_ENDPOINT",
+                "HF_HOME",
+                "HF_HUB_URL",
             ] {
                 if std::env::var(var).unwrap_or_default().is_empty() {
                     std::env::remove_var(var);
@@ -80,6 +87,12 @@ impl Embedder {
         // mean-pool across seq_len → [1, 384]
         let embedding = (hidden.sum(1)? / seq_len as f64)?;
 
-        Ok(embedding.squeeze(0)?.to_vec1::<f32>()?)
+        let vec = embedding.squeeze(0)?.to_vec1::<f32>()?;
+
+        // L2-normalize so all embeddings are unit vectors — cosine similarity
+        // becomes pure angle comparison with no magnitude bias from chunk length... still not
+        // totally working
+        let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+        Ok(vec.iter().map(|x| x / norm).collect())
     }
 }
