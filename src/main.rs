@@ -1,9 +1,9 @@
 use crate::embed::Embedder;
 use crate::ingest::{map_file, split_chunk_spans, split_code_chunks, wrap_chunk_spans};
+use crate::storage::PersistentStore;
 use crate::storage::hash::hash_chunk;
 use crate::storage::sled_store::SledStore;
-use crate::storage::types::{ChunkKind, ChunkMeta, FileFingerprint};
-use crate::storage::PersistentStore;
+use crate::storage::types::{ChunkMeta, FileFingerprint};
 use crate::store::VectorStore;
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -11,12 +11,12 @@ use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod code_chunker;
 mod embed;
 mod ingest;
 mod similarity;
 mod storage;
 mod store;
-mod code_chunker;
 
 #[derive(Parser)]
 #[command(name = "VectorTool")]
@@ -33,7 +33,6 @@ enum Commands {
     Ingest { path: PathBuf },
 }
 
-
 fn main() -> anyhow::Result<()> {
     let embedder = Embedder::load()?;
     let mut store = VectorStore::new();
@@ -47,7 +46,8 @@ fn main() -> anyhow::Result<()> {
             if let Some(prev) = db.get_file_fingerprint(path)? {
                 if prev == fp {
                     println!("No changes detected for {:?}", path);
-                    return Ok(());
+                    load_file_index_into_store(&db, &mut store, path)?;
+                    return query_loop(&embedder, &store);
                 }
                 db.remove_file_index(path)?;
             }
@@ -56,41 +56,27 @@ fn main() -> anyhow::Result<()> {
             let mmap = map_file(file);
 
             let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-            let code_chunks = if ext == "rs"{
+            let chunks = if ext == "rs" {
                 split_code_chunks(path, &mmap, fp.modified)
             } else {
                 let spans = split_chunk_spans(&mmap, 512);
                 wrap_chunk_spans(path, spans, fp.modified)
             };
-            
 
-            let spans = split_chunk_spans(&mmap, 512);
+            let mut ids = Vec::with_capacity(chunks.len());
 
-            let mut ids: Vec<_> = Vec::with_capacity(spans.len());
-
-            for span in spans.iter() {
-                let chunk = &mmap[span.start..span.end];
-                let id = hash_chunk(chunk);
+            for code_chunk in chunks.iter() {
+                let (start, end) = code_chunk.span;
+                let chunk_bytes = &mmap[start..end];
+                let id = hash_chunk(chunk_bytes);
                 ids.push(id);
 
-                let meta = ChunkMeta {
-                    file_path: path.clone(),
-                    byte_start: span.start as u64,
-                    byte_end: span.end as u64,
-                    chunk_kind: ChunkKind::Paragraph,
-                    updated_at: fp.modified,
-                    language: None,
-                    symbol_kind: None,
-                    symbol_name: None,
-                    module_path: None,
-                    parent_symbol: None,
-                    signature: None,
-                };
+                let meta = code_chunk.meta.clone();
 
                 let embedding = if let Some(emb) = db.get_embedding(&id)? {
                     emb
                 } else {
-                    let text = std::str::from_utf8(chunk)?;
+                    let text = std::str::from_utf8(chunk_bytes)?;
                     let emb = embedder.embed(text)?;
                     db.put_embedding(&id, &emb)?;
                     emb
@@ -103,44 +89,68 @@ fn main() -> anyhow::Result<()> {
             db.set_file_index(path, &ids)?;
             db.set_file_fingerprint(path, &fp)?;
 
-            println!(
-                "Indexed {} chunks. Type a question (or 'exit' to quit):",
-                store.len()
-            );
-
-            let stdin = io::stdin();
-            loop {
-                print!("> ");
-                io::stdout().flush()?;
-
-                let mut line = String::new();
-                stdin.lock().read_line(&mut line)?;
-                let question = line.trim();
-
-                if question == "exit" || question.is_empty() {
-                    break;
-                }
-
-                let query_embedding = embedder.embed(question)?;
-                let results = store.search(&query_embedding, 3);
-
-                println!(
-                    "\nTop results for: \"{}\"\n",
-                    &question[..50.min(question.len())]
-                );
-                for (i, (entry, score)) in results.iter().enumerate() {
-                    println!("--- Result {} ---", i + 1);
-                    println!("Score: {:.4}", score);
-                    let text = load_chunk_text(&entry.meta)?;
-                    println!("{}\n", text);
-                }
-            }
+            query_loop(&embedder, &store)?;
         }
     }
 
     Ok(())
 }
 
+fn load_file_index_into_store(
+    db: &SledStore,
+    store: &mut VectorStore,
+    path: &PathBuf,
+) -> anyhow::Result<()> {
+    let Some(ids) = db.get_file_index(path)? else {
+        return Ok(());
+    };
+
+    for id in ids {
+        let (Some(meta), Some(embedding)) = (db.get_meta(&id)?, db.get_embedding(&id)?) else {
+            continue;
+        };
+        store.insert(id, meta, embedding);
+    }
+
+    Ok(())
+}
+
+fn query_loop(embedder: &Embedder, store: &VectorStore) -> anyhow::Result<()> {
+    println!(
+        "Ready ({} chunks). Type a question (or 'exit' to quit):",
+        store.len()
+    );
+
+    let stdin = io::stdin();
+    loop {
+        print!("> ");
+        io::stdout().flush()?;
+
+        let mut line = String::new();
+        stdin.lock().read_line(&mut line)?;
+        let question = line.trim();
+
+        if question == "exit" || question.is_empty() {
+            break;
+        }
+
+        let query_embedding = embedder.embed(question)?;
+        let results = store.search_hybrid(question, &query_embedding, 3);
+
+        println!(
+            "\nTop results for: \"{}\"\n",
+            &question[..50.min(question.len())]
+        );
+        for (i, (entry, score)) in results.iter().enumerate() {
+            println!("--- Result {} ---", i + 1);
+            println!("Score: {:.4}", score);
+            let text = load_chunk_text(&entry.meta)?;
+            println!("{}\n", text);
+        }
+    }
+
+    Ok(())
+}
 
 fn file_fingerprint(path: &PathBuf) -> anyhow::Result<FileFingerprint> {
     let meta = std::fs::metadata(path)?;
