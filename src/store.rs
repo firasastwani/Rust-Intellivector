@@ -26,6 +26,7 @@ impl VectorStore {
         self.entries.len()
     }
 
+    // take similirty algo as a future param and swap out
     pub fn search(&self, query_embedding: &[f32], top_k: usize) -> Vec<(&Entry, f32)> {
         let mut scored: Vec<(&Entry, f32)> = self
             .entries

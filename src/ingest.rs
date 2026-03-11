@@ -1,11 +1,17 @@
 use memmap2::Mmap;
 use std::fs::File;
+use std::path::PathBuf; 
+
+use crate::code_chunker::*; 
+use crate::storage::types::*; 
 
 #[derive(Debug, Clone, Copy)]
 pub struct ChunkSpan {
     pub start: usize,
     pub end: usize,
 }
+
+
 
 // memory-maps the file; caller holds the Mmap so chunk slices can borrow it
 pub fn map_file(file: File) -> Mmap {
@@ -38,4 +44,33 @@ pub fn split_chunk_spans(data: &[u8], chunk_size: usize) -> Vec<ChunkSpan> {
     }
 
     spans
+}
+
+pub fn wrap_chunk_spans( file_path: &PathBuf,
+    spans: Vec<ChunkSpan>,
+    updated_at: u64,
+) -> Vec<CodeChunk> {
+    spans
+        .into_iter()
+        .map(|span| CodeChunk {
+            meta: ChunkMeta {
+                file_path: file_path.to_path_buf(),
+                byte_start: span.start as u64,
+                byte_end: span.end as u64,
+                chunk_kind: ChunkKind::Paragraph, // or Text
+                updated_at,
+                language: None,
+                symbol_kind: None,
+                symbol_name: None,
+                module_path: None,
+                parent_symbol: None,
+                signature: None,
+            },
+            span: (span.start, span.end),
+        })
+        .collect()
+}
+
+pub fn split_code_chunks(path: &PathBuf, data: &[u8], updated_at: u64) -> Vec<CodeChunk>{
+    split_rust_ast(path, data, updated_at).unwrap() 
 }

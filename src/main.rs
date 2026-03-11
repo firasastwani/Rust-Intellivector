@@ -1,5 +1,5 @@
 use crate::embed::Embedder;
-use crate::ingest::{map_file, split_chunk_spans};
+use crate::ingest::{map_file, split_chunk_spans, split_code_chunks, wrap_chunk_spans};
 use crate::storage::hash::hash_chunk;
 use crate::storage::sled_store::SledStore;
 use crate::storage::types::{ChunkKind, ChunkMeta, FileFingerprint};
@@ -16,6 +16,7 @@ mod ingest;
 mod similarity;
 mod storage;
 mod store;
+mod code_chunker;
 
 #[derive(Parser)]
 #[command(name = "VectorTool")]
@@ -31,6 +32,7 @@ struct Cli {
 enum Commands {
     Ingest { path: PathBuf },
 }
+
 
 fn main() -> anyhow::Result<()> {
     let embedder = Embedder::load()?;
@@ -52,6 +54,16 @@ fn main() -> anyhow::Result<()> {
 
             let file = File::open(path)?;
             let mmap = map_file(file);
+
+            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+            let code_chunks = if ext == "rs"{
+                split_code_chunks(path, &mmap, fp.modified)
+            } else {
+                let spans = split_chunk_spans(&mmap, 512);
+                wrap_chunk_spans(path, spans, fp.modified)
+            };
+            
+
             let spans = split_chunk_spans(&mmap, 512);
 
             let mut ids: Vec<_> = Vec::with_capacity(spans.len());
@@ -68,6 +80,11 @@ fn main() -> anyhow::Result<()> {
                     chunk_kind: ChunkKind::Paragraph,
                     updated_at: fp.modified,
                     language: None,
+                    symbol_kind: None,
+                    symbol_name: None,
+                    module_path: None,
+                    parent_symbol: None,
+                    signature: None,
                 };
 
                 let embedding = if let Some(emb) = db.get_embedding(&id)? {
@@ -123,6 +140,7 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
 
 fn file_fingerprint(path: &PathBuf) -> anyhow::Result<FileFingerprint> {
     let meta = std::fs::metadata(path)?;

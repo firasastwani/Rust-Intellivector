@@ -7,6 +7,20 @@ pub struct ChunkId {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SymbolKind {
+    Function, 
+    ImplMethod, 
+    Struct,
+    Enum,
+    Trait, 
+    Module,
+    TypeAlias,
+    Const,
+    Static,
+}
+
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ChunkKind {
     Paragraph,
     AstNode,
@@ -20,6 +34,13 @@ pub struct ChunkMeta {
     pub chunk_kind: ChunkKind,
     pub updated_at: u64,
     pub language: Option<String>,
+
+    // code specifc meta data
+    pub symbol_kind: Option<SymbolKind>,
+    pub symbol_name: Option<String>,
+    pub module_path: Option<String>,
+    pub parent_symbol: Option<String>,
+    pub signature: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -27,3 +48,4 @@ pub struct FileFingerprint {
     pub size: u64,
     pub modified: u64,
 }
+
