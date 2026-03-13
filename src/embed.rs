@@ -38,7 +38,7 @@ impl Embedder {
         let token = std::env::var("HF_TOKEN").ok();
         let api = ApiBuilder::new().with_token(token).build()?;
         let repo = api.repo(Repo::new(
-            "sentence-transformers/all-MiniLM-L6-v2".to_string(),
+            "BAAI/bge-small-en-v1.5".to_string(),
             RepoType::Model,
         ));
 

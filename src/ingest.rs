@@ -12,7 +12,6 @@ pub struct ChunkSpan {
 }
 
 
-
 // memory-maps the file; caller holds the Mmap so chunk slices can borrow it
 pub fn map_file(file: File) -> Mmap {
     let mmap = unsafe { Mmap::map(&file) }.unwrap();
