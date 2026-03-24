@@ -1,0 +1,3 @@
+{"query":"How are embeddings computed?","expected_symbol":"embed","expected_file":"src/embed.rs","rationale":"Embedder::embed performs pooling and normalization."}
+{"query":"How are Rust files chunked into AST nodes?","expected_symbol":"split_rust_ast","expected_file":"src/code_chunker.rs","rationale":"AST chunking is implemented in split_rust_ast."}
+{"query":"How is cosine similarity computed?","expected_symbol":"cosine_similarity","expected_file":"src/similarity.rs","rationale":"cosine_similarity is the scoring function."}

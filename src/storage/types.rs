@@ -42,7 +42,7 @@ pub enum SymbolType {
 }
 
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChunkKind {
     Paragraph,
     AstNode,

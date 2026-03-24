@@ -26,6 +26,14 @@ impl VectorStore {
         self.entries.len()
     }
 
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    pub fn get_entry(&self, id: &ChunkId) -> Option<&Entry> {
+        self.entries.iter().find(|e| &e.id == id)
+    }
+
     // take similirty algo as a future param and swap out
     pub fn search(&self, query_embedding: &[f32], top_k: usize) -> Vec<(&Entry, f32)> {
         let mut scored: Vec<(&Entry, f32)> = self
@@ -37,6 +45,20 @@ impl VectorStore {
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Less));
 
         scored.into_iter().take(top_k).collect()
+    }
+
+    pub fn search_ids(&self, query_embedding: &[f32], top_k: usize) -> Vec<ChunkId> {
+        let mut scored: Vec<(&Entry, f32)> = self
+            .entries
+            .iter()
+            .map(|entry| (entry, cosine_similarity(query_embedding, &entry.embedding)))
+            .collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Less));
+        scored
+            .into_iter()
+            .take(top_k)
+            .map(|(e, _)| e.id)
+            .collect()
     }
 
     pub fn search_hybrid(
