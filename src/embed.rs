@@ -4,6 +4,7 @@ use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config};
 use hf_hub::{api::sync::ApiBuilder, Repo, RepoType};
 use tokenizers::Tokenizer;
+use tokenizers::TruncationParams;
 
 pub struct Embedder {
     model: BertModel,
@@ -46,9 +47,15 @@ impl Embedder {
         let weights_path = repo.get("model.safetensors")?;
         let config_path = repo.get("config.json")?;
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
+        let mut tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!(e))
             .context("failed to load tokenizer")?;
+        tokenizer
+            .with_truncation(Some(TruncationParams {
+                max_length: 512,
+                ..Default::default()
+            }))
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         let config_str = std::fs::read_to_string(config_path)?;
         let config: Config = serde_json::from_str(&config_str)?;

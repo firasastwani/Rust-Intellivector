@@ -16,7 +16,7 @@ pub fn split_rust_ast(
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_rust::LANGUAGE.into())
-        .expect("failed to load Rust grammar");
+        .expect("failed to load grammar");
     let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
     let root = tree.root_node();
 
@@ -198,6 +198,7 @@ fn make_meta(
 
     ChunkMeta {
         file_path: file_path.to_path_buf(),
+        file_hash: 0,
         byte_start: node.start_byte() as u64,
         byte_end: node.end_byte() as u64,
         chunk_kind: ChunkKind::AstNode,
@@ -310,6 +311,7 @@ fn make_doc_chunk(
         span: (start, end),
         meta: ChunkMeta {
             file_path: file_path.to_path_buf(),
+            file_hash: 0,
             byte_start: start as u64,
             byte_end: end as u64,
             chunk_kind: ChunkKind::DocComment,

@@ -3,6 +3,9 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum ContextGroup {
+    Loose {
+        chunk: ChunkId,
+    },
     Function {
         signature: ChunkId,
         body: Vec<ChunkId>,
@@ -40,7 +43,6 @@ pub enum ContextGroup {
 #[derive(Debug, Clone)]
 pub struct GroupIndex {
     pub groups: Vec<ContextGroup>,
-    pub chunk_to_group: HashMap<ChunkId, usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +53,7 @@ pub struct GroupResult {
 
 pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
     let mut groups: Vec<ContextGroup> = Vec::new();
-    let mut chunk_to_group: HashMap<ChunkId, usize> = HashMap::new();
+    let mut grouped: HashMap<ChunkId, usize> = HashMap::new();
 
     let mut docs_by_symbol: HashMap<String, ChunkId> = HashMap::new();
     for (id, meta) in chunks {
@@ -101,9 +103,9 @@ pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
                 };
                 let idx = groups.len();
                 groups.push(group);
-                chunk_to_group.insert(*id, idx);
+                grouped.insert(*id, idx);
                 if let Some(doc_id) = docs {
-                    chunk_to_group.insert(doc_id, idx);
+                    grouped.insert(doc_id, idx);
                 }
             }
             Some(SymbolType::Impl) => {
@@ -123,12 +125,12 @@ pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
                 };
                 let idx = groups.len();
                 groups.push(group);
-                chunk_to_group.insert(*id, idx);
+                grouped.insert(*id, idx);
                 for m in methods {
-                    chunk_to_group.insert(m, idx);
+                    grouped.insert(m, idx);
                 }
                 if let Some(doc_id) = docs {
-                    chunk_to_group.insert(doc_id, idx);
+                    grouped.insert(doc_id, idx);
                 }
             }
             Some(SymbolType::Struct) => {
@@ -149,12 +151,12 @@ pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
                 };
                 let idx = groups.len();
                 groups.push(group);
-                chunk_to_group.insert(*id, idx);
+                grouped.insert(*id, idx);
                 for imp in impls {
-                    chunk_to_group.insert(imp, idx);
+                    grouped.insert(imp, idx);
                 }
                 if let Some(doc_id) = docs {
-                    chunk_to_group.insert(doc_id, idx);
+                    grouped.insert(doc_id, idx);
                 }
             }
             Some(SymbolType::Enum) => {
@@ -175,12 +177,12 @@ pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
                 };
                 let idx = groups.len();
                 groups.push(group);
-                chunk_to_group.insert(*id, idx);
+                grouped.insert(*id, idx);
                 for imp in impls {
-                    chunk_to_group.insert(imp, idx);
+                    grouped.insert(imp, idx);
                 }
                 if let Some(doc_id) = docs {
-                    chunk_to_group.insert(doc_id, idx);
+                    grouped.insert(doc_id, idx);
                 }
             }
             Some(SymbolType::Trait) => {
@@ -201,12 +203,12 @@ pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
                 };
                 let idx = groups.len();
                 groups.push(group);
-                chunk_to_group.insert(*id, idx);
+                grouped.insert(*id, idx);
                 for imp in impls {
-                    chunk_to_group.insert(imp, idx);
+                    grouped.insert(imp, idx);
                 }
                 if let Some(doc_id) = docs {
-                    chunk_to_group.insert(doc_id, idx);
+                    grouped.insert(doc_id, idx);
                 }
             }
             Some(SymbolType::Module) => {
@@ -219,18 +221,26 @@ pub fn build_groups(chunks: &[(ChunkId, ChunkMeta)]) -> GroupIndex {
                 };
                 let idx = groups.len();
                 groups.push(group);
-                chunk_to_group.insert(*id, idx);
+                grouped.insert(*id, idx);
                 for item in items {
-                    chunk_to_group.insert(item, idx);
+                    grouped.insert(item, idx);
                 }
             }
             _ => {}
         }
     }
 
+    for (id, _) in chunks {
+        if grouped.contains_key(id) {
+            continue;
+        }
+        let idx = groups.len();
+        groups.push(ContextGroup::Loose { chunk: *id });
+        grouped.insert(*id, idx);
+    }
+
     GroupIndex {
         groups,
-        chunk_to_group,
     }
 }
 
@@ -283,6 +293,7 @@ pub fn rank_groups(
 
 pub fn member_ids(group: &ContextGroup) -> Vec<ChunkId> {
     match group {
+        ContextGroup::Loose { chunk } => vec![*chunk],
         ContextGroup::Function { signature, body, docs } => {
             let mut ids = vec![*signature];
             ids.extend(body.iter().copied());
@@ -336,6 +347,7 @@ pub fn member_ids(group: &ContextGroup) -> Vec<ChunkId> {
 
 pub fn primary_id(group: &ContextGroup) -> ChunkId {
     match group {
+        ContextGroup::Loose { chunk } => *chunk,
         ContextGroup::Function { signature, .. } => *signature,
         ContextGroup::Module { declaration, .. } => *declaration,
         ContextGroup::Impl { declaration, .. } => *declaration,
@@ -363,6 +375,7 @@ mod tests {
     fn meta(symbol_type: Option<SymbolType>, name: Option<&str>) -> ChunkMeta {
         ChunkMeta {
             file_path: PathBuf::from("src/lib.rs"),
+            file_hash: 0,
             byte_start: 0,
             byte_end: 1,
             chunk_kind: ChunkKind::AstNode,
@@ -383,14 +396,21 @@ mod tests {
     fn groups_function_with_docs() {
         let f_id = ChunkId { hash: [1u8; 32] };
         let d_id = ChunkId { hash: [2u8; 32] };
-        let mut f_meta = meta(Some(SymbolType::Function), Some("foo"));
+        let f_meta = meta(Some(SymbolType::Function), Some("foo"));
         let mut d_meta = meta(None, Some("foo"));
         d_meta.chunk_kind = ChunkKind::DocComment;
         d_meta.ast_node_type = Some("doc_comment".to_string());
         let groups = build_groups(&[(f_id, f_meta), (d_id, d_meta)]);
         assert_eq!(groups.groups.len(), 1);
         assert!(matches!(groups.groups[0], ContextGroup::Function { .. }));
-        assert_eq!(groups.chunk_to_group.get(&f_id), Some(&0));
-        assert_eq!(groups.chunk_to_group.get(&d_id), Some(&0));
+    }
+
+    #[test]
+    fn groups_loose_for_ungrouped_chunk() {
+        let id = ChunkId { hash: [9u8; 32] };
+        let meta = meta(None, None);
+        let groups = build_groups(&[(id, meta)]);
+        assert_eq!(groups.groups.len(), 1);
+        assert!(matches!(groups.groups[0], ContextGroup::Loose { .. }));
     }
 }

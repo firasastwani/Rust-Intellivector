@@ -54,6 +54,7 @@ pub fn wrap_chunk_spans( file_path: &PathBuf,
         .map(|span| CodeChunk {
             meta: ChunkMeta {
                 file_path: file_path.to_path_buf(),
+                file_hash: 0,
                 byte_start: span.start as u64,
                 byte_end: span.end as u64,
                 chunk_kind: ChunkKind::Paragraph, // or Text
@@ -73,6 +74,6 @@ pub fn wrap_chunk_spans( file_path: &PathBuf,
         .collect()
 }
 
-pub fn split_code_chunks(path: &PathBuf, data: &[u8], updated_at: u64) -> Vec<CodeChunk>{
-    split_rust_ast(path, data, updated_at).unwrap() 
-}
+pub fn split_code_chunks(path: &PathBuf, data: &[u8], updated_at: u64) -> anyhow::Result<Vec<CodeChunk>>{
+    split_rust_ast(path, data, updated_at)
+} 

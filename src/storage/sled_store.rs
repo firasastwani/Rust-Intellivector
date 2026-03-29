@@ -1,7 +1,7 @@
 use crate::storage::types::{ChunkId, ChunkMeta, FileFingerprint};
 use crate::storage::PersistentStore;
 use sled::{Db, Tree};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct SledStore {
     _db: Db,
@@ -9,6 +9,8 @@ pub struct SledStore {
     meta: Tree,
     file_index: Tree,
     file_fingerprint: Tree,
+    file_hashes: Tree,
+    project_meta: Tree,
 }
 
 impl SledStore {
@@ -18,6 +20,8 @@ impl SledStore {
         let meta = db.open_tree("meta")?;
         let file_index = db.open_tree("file_index")?;
         let file_fingerprint = db.open_tree("file_fingerprint")?;
+        let file_hashes = db.open_tree("file_hashes")?;
+        let project_meta = db.open_tree("project_meta")?;
 
         Ok(SledStore {
             _db: db,
@@ -25,6 +29,8 @@ impl SledStore {
             meta,
             file_index,
             file_fingerprint,
+            file_hashes,
+            project_meta,
         })
     }
 
@@ -54,6 +60,12 @@ impl PersistentStore for SledStore {
         Ok(())
     }
 
+    fn remove_embedding(&self, id: &ChunkId) -> anyhow::Result<()> {
+        let key = Self::key_for_id(id);
+        self.embeddings.remove(key)?;
+        Ok(())
+    }
+
     fn get_meta(&self, id: &ChunkId) -> anyhow::Result<Option<ChunkMeta>> {
         let key = Self::key_for_id(id);
         let Some(value) = self.meta.get(key)? else {
@@ -67,6 +79,12 @@ impl PersistentStore for SledStore {
         let key = Self::key_for_id(id);
         let bytes = bincode::serialize(meta)?;
         self.meta.insert(key, bytes)?;
+        Ok(())
+    }
+
+    fn remove_meta(&self, id: &ChunkId) -> anyhow::Result<()> {
+        let key = Self::key_for_id(id);
+        self.meta.remove(key)?;
         Ok(())
     }
 
@@ -92,19 +110,41 @@ impl PersistentStore for SledStore {
         Ok(())
     }
 
-    fn get_file_fingerprint(&self, path: &Path) -> anyhow::Result<Option<FileFingerprint>> {
-        let key = Self::key_for_path(path);
-        let Some(value) = self.file_fingerprint.get(key)? else {
-            return Ok(None);
-        };
-        let fp: FileFingerprint = bincode::deserialize(&value)?;
-        Ok(Some(fp))
-    }
-
     fn set_file_fingerprint(&self, path: &Path, fp: &FileFingerprint) -> anyhow::Result<()> {
         let key = Self::key_for_path(path);
         let bytes = bincode::serialize(fp)?;
         self.file_fingerprint.insert(key, bytes)?;
+        Ok(())
+    }
+
+    fn set_file_hash(&self, path: &Path, hash: u64) -> anyhow::Result<()> {
+        let key = Self::key_for_path(path);
+        let bytes = bincode::serialize(&hash)?;
+        self.file_hashes.insert(key, bytes)?;
+        Ok(())
+    }
+
+    fn remove_file_hash(&self, path: &Path) -> anyhow::Result<()> {
+        let key = Self::key_for_path(path);
+        self.file_hashes.remove(key)?;
+        Ok(())
+    }
+
+    fn iter_file_hashes(&self) -> anyhow::Result<Vec<(PathBuf, u64)>> {
+        let mut out = Vec::new();
+        for item in self.file_hashes.iter() {
+            let (key, value) = item?;
+            let path = PathBuf::from(String::from_utf8_lossy(&key).to_string());
+            let hash: u64 = bincode::deserialize(&value)?;
+            out.push((path, hash));
+        }
+        Ok(out)
+    }
+
+    fn set_project_root(&self, path: &Path) -> anyhow::Result<()> {
+        let key = b"project_root";
+        let bytes = bincode::serialize(&path.to_path_buf())?;
+        self.project_meta.insert(key, bytes)?;
         Ok(())
     }
 }

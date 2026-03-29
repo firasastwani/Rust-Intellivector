@@ -52,6 +52,8 @@ pub enum ChunkKind {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChunkMeta {
     pub file_path: PathBuf,
+    #[serde(default)]
+    pub file_hash: u64,
     pub byte_start: u64,
     pub byte_end: u64,
     pub chunk_kind: ChunkKind,
